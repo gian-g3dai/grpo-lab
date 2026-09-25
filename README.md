@@ -7,7 +7,7 @@ LLMs on a task with a verifiable reward. It is built on
 (QLoRA) on a bigger GPU.
 
 Task: [GSM8K](https://huggingface.co/datasets/openai/gsm8k) grade-school math. The model
-reasons freely and ends with `#### <number>`; the reward is 1 if that number matches the
+reasons freely and ends with `\boxed{<number>}`; the reward is 1 if that number matches the
 gold answer. No learned reward model, no SFT stage, no human labels.
 
 ```
@@ -20,7 +20,67 @@ prompt ──► policy samples G=8 completions ──► reward each (correct? 
 
 ## Results
 
-RESULTS_PLACEHOLDER
+One run, `configs/qwen2.5-0.5b-gsm8k.yaml`, on a single **RTX 4060 (8 GB)** under WSL2.
+Base model: [Qwen/Qwen2.5-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct).
+300 GRPO steps × 4 prompts × 8 samples = 9,600 rollouts over ~1,200 GSM8K train problems
+(16% of one epoch). Evaluation is greedy decoding on the **full GSM8K test set (1,319 problems)**,
+answer = number inside the last `\boxed{}`.
+
+| model | n | GSM8K acc (greedy) | `\boxed{}` rate | mean completion chars |
+|---|---|---|---|---|
+| `Qwen/Qwen2.5-0.5B-Instruct` (base) | 1319 | **39.1%** | 84.7% | 981 |
+| + GRPO LoRA (this repo, 300 steps) | 1319 | **49.7%** | 99.6% | 643 |
+
+**+10.5 points** (paired bootstrap 95% CI **[+7.7, +13.3]**; McNemar exact p ≈ 1e-12).
+261 problems flipped wrong→right, 122 right→wrong.
+
+![training curves](results/qwen2.5-0.5b-gsm8k/curves.png)
+
+| | first 25 steps | last 25 steps |
+|---|---|---|
+| mean correctness reward on rollouts (T=1.0) | 0.43 | 0.59 |
+| mean completion length (tokens) | 267 | 196 |
+| rollouts truncated at 384 tokens | 17% | 1.4% |
+
+Cost: 2h01m training (23.9 s/step), 2 × ~15 min eval, peak 7.9 GB VRAM.
+
+**Where the gain comes from.** Two effects, roughly equal:
+
+1. *Termination / format.* The base model leaves 202 of 1,319 answers without a `\boxed{}`
+   (rambles into the length limit, or re-derives the problem after answering). After GRPO
+   that drops to 5. The 0.2 format bonus plus the fact that truncated rollouts score 0 make
+   "stop after the box" a strongly rewarded behaviour.
+2. *Actual reasoning.* Conditioned on producing a boxed answer, accuracy goes 46.2% → 49.8%.
+   The model more often carries all the steps of a multi-step problem through (see example).
+
+Both are real improvements on the task, but if you care only about (2), read the
+conditional number, not the headline.
+
+<details>
+<summary>Example: base model skips the second step, GRPO model doesn't (test problem, greedy)</summary>
+
+> Nissa hires 60 seasonal workers to play elves in her department store's Santa village.
+> A third of the elves quit after children vomit on them, then 10 of the remaining elves
+> quit after kids kick their shins. How many elves are left? (gold: 30)
+
+**Base** — computes 60/3 = 20, 60 − 20 = 40, answers `\boxed{40}`. Never applies the "then 10 quit".
+
+**GRPO** — 60/3 = 20 → 40 remain → 40 − 10 = 30 → `\boxed{30}`.
+
+Every completion for every test problem, before and after, is in
+`results/qwen2.5-0.5b-gsm8k/eval_{before,after}.json` if you want to diff behaviours yourself.
+</details>
+
+**Caveats.** Single seed. GSM8K train and test are disjoint but the same distribution, so this
+is in-distribution improvement, not a claim about general reasoning. The reward curve
+plateaus after ~100 steps and `frac_reward_zero_std` climbs to ~45% by the end (nearly half
+the prompts are either always-solved or never-solved by the sampler and give no gradient);
+the standard remedies are a larger model, harder problems, or dynamic sampling (DAPO).
+The trained LoRA adapter is 70 MB and not committed; `scripts/run_experiment.sh` reproduces it.
+
+The 7B config (`configs/qwen2.5-7b-gsm8k.yaml`) has **not** been run — it needs a ≥24 GB GPU.
+Expected behaviour from the literature: Qwen2.5-7B-Instruct starts around 85-90% on GSM8K,
+so gains there are a few points at most and a harder dataset (MATH, GSM-Hard) is a better target.
 
 ## Repo layout
 
@@ -77,11 +137,12 @@ rollouts. Any HF causal LM works in the `model:` field; swap in
 ## How the pieces fit
 
 * **Data** (`data.py`): each GSM8K row becomes a chat prompt (system + user) and a gold
-  string. The system prompt asks for step-by-step reasoning and a final `#### <number>` line.
+  string. The system prompt asks for step-by-step reasoning and a final `\boxed{}` answer
+  (the format Qwen instruct models already use natively, so the baseline is meaningful).
 * **Rewards** (`rewards.py`): plain Python functions with the TRL signature
-  `f(completions, **columns) -> list[float]`. `correctness` parses the last `####` line and
-  compares numbers; `format` pays 0.2 for exactly one `####` line at the end (dense-ish
-  signal before the model ever gets a problem right, and an anti-answer-spam guard).
+  `f(completions, **columns) -> list[float]`. `correctness` parses the last `\boxed{}` and
+  compares numbers; `format` pays 0.2 for exactly one `\boxed{}` followed by at most a short
+  tail (rewards stopping after the answer; penalises hedging with several boxes).
   TRL sums the rewards (weights configurable via `reward_weights`).
 * **Trainer** (`train.py`): every key under `grpo:` in the YAML is a `trl.GRPOConfig`
   field, so the [TRL GRPO docs](https://huggingface.co/docs/trl/grpo_trainer) apply
