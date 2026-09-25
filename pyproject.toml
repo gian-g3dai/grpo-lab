@@ -1,0 +1,22 @@
+[project]
+name = "grpo-lab"
+version = "0.1.0"
+description = "Minimal GRPO training infra for small LLMs on verifiable tasks (GSM8K)."
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.6",
+    "trl>=0.20",
+    "transformers>=4.51",
+    "peft>=0.15",
+    "datasets>=3.0",
+    "accelerate>=1.0",
+    "bitsandbytes>=0.45",
+    "pyyaml",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["grpo_lab*"]

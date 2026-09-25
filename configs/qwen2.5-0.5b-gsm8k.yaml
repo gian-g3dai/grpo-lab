@@ -1,0 +1,43 @@
+# Small run: fits an 8 GB consumer GPU (tested on an RTX 4060, bf16, LoRA, HF generation).
+run_name: qwen2.5-0.5b-gsm8k
+model: Qwen/Qwen2.5-0.5B-Instruct
+
+data:
+  split: train        # GSM8K train (7473 problems); we only see max_steps * prompts_per_step of them
+  limit: null
+
+rewards: [correctness, format]
+
+lora:
+  r: 32
+  lora_alpha: 64
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+grpo:
+  # rollout
+  num_generations: 8              # G in the GRPO paper: completions per prompt
+  per_device_train_batch_size: 4  # micro-batch for the loss pass (bounds fp32 logits memory: 4 x 700 x 152k vocab)
+  gradient_accumulation_steps: 8  # -> 32 completions = 4 prompts per optimizer step
+  generation_batch_size: 32       # all 32 rollouts in ONE generate() call: HF generate is per-token-latency bound
+  max_completion_length: 384
+  temperature: 1.0
+  # objective (TRL defaults: DAPO-style token-level loss, no KL term)
+  beta: 0.0                       # KL penalty vs. reference; 0 = no ref model, saves memory
+  epsilon: 0.2
+  scale_rewards: group
+  # optimisation
+  learning_rate: 2.0e-5           # LoRA tolerates a higher LR than full fine-tuning (~1e-6)
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 10
+  max_grad_norm: 0.5
+  max_steps: 300
+  gradient_checkpointing: true
+  bf16: true
+  # logging / saving
+  logging_steps: 1
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 1
+  report_to: none
+  seed: 0
