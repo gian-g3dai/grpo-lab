@@ -26,7 +26,7 @@ Base model: [Qwen/Qwen2.5-0.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-0.5
 (16% of one epoch). Evaluation is greedy decoding on the **full GSM8K test set (1,319 problems)**,
 answer = number inside the last `\boxed{}`.
 
-| model | n | GSM8K acc (greedy) | `\boxed{}` rate | mean completion chars |
+| model | n | GSM8K acc (greedy) | numeric `\boxed{}` rate | mean completion chars |
 |---|---|---|---|---|
 | `Qwen/Qwen2.5-0.5B-Instruct` (base) | 1319 | **39.1%** | 84.7% | 981 |
 | + GRPO LoRA (this repo, 300 steps) | 1319 | **49.7%** | 99.6% | 643 |
