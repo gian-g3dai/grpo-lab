@@ -87,6 +87,10 @@ plateaus after ~100 steps and `frac_reward_zero_std` climbs to ~45% by the end (
 the prompts are either always-solved or never-solved by the sampler and give no gradient);
 the standard remedies are a larger model, harder problems, or dynamic sampling (DAPO).
 The trained LoRA adapter is 70 MB and not committed; `scripts/run_experiment.sh` reproduces it.
+The run used TRL 1.14, transformers 5.17, PEFT 0.21 and torch 2.11 (CUDA 12.8); `uv.lock`
+pins that environment, and the lower bounds in `pyproject.toml` match it, because older TRL
+releases ship different GRPO defaults (`loss_type`, `scale_rewards`) and would not reproduce
+this recipe verbatim.
 
 The 7B config (`configs/qwen2.5-7b-gsm8k.yaml`) has **not** been run — it needs a ≥24 GB GPU.
 Expected behaviour from the literature: Qwen2.5-7B-Instruct starts around 85-90% on GSM8K,
@@ -116,7 +120,7 @@ tests/                      unit tests for the answer parser and rewards
 
 ```bash
 git clone https://github.com/gian-g3dai/grpo-lab && cd grpo-lab
-scripts/setup.sh                                   # needs uv + an NVIDIA GPU
+scripts/setup.sh                                   # needs uv + an NVIDIA GPU; installs uv.lock
 .venv/bin/python -m pytest tests                   # reward parser sanity checks
 
 # whole pipeline for the small model (baseline eval, GRPO, eval, plots)

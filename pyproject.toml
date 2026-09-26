@@ -7,16 +7,18 @@ name = "grpo-lab"
 version = "0.1.0"
 description = "Minimal GRPO training infra for small LLMs on verifiable tasks (GSM8K)."
 requires-python = ">=3.11"
+# Lower bounds are the versions the reported run used (see uv.lock for the exact set).
+# Older TRL releases in particular ship different GRPO defaults (loss_type, scale_rewards).
 dependencies = [
-    "torch>=2.6",
-    "trl>=0.20",
-    "transformers>=4.51",
-    "peft>=0.15",
-    "datasets>=3.0",
-    "accelerate>=1.0",
-    "bitsandbytes>=0.45",
-    "pyyaml",
-    "matplotlib",
+    "torch>=2.11",
+    "trl>=1.14",
+    "transformers>=5.17",
+    "peft>=0.21",
+    "datasets>=5.0",
+    "accelerate>=1.15",
+    "bitsandbytes>=0.50",
+    "pyyaml>=6.0",
+    "matplotlib>=3.11",
 ]
 
 [project.optional-dependencies]
@@ -24,3 +26,13 @@ dev = ["pytest"]
 
 [tool.setuptools.packages.find]
 include = ["grpo_lab*"]
+
+[tool.uv]
+# torch from the CUDA 12.8 index, everything else from PyPI (matches scripts/setup.sh).
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
