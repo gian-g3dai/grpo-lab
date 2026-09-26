@@ -44,17 +44,27 @@ answer = number inside the last `\boxed{}`.
 
 Cost: 2h01m training (23.9 s/step), 2 × ~15 min eval, peak 7.9 GB VRAM.
 
-**Where the gain comes from.** Two effects, roughly equal:
+**Where the gain comes from.** Split the test set by whether the *base* model produced a
+`\boxed{}` at all, so both models are scored on the same problems:
 
-1. *Termination / format.* The base model leaves 202 of 1,319 answers without a `\boxed{}`
-   (rambles into the length limit, or re-derives the problem after answering). After GRPO
-   that drops to 5. The 0.2 format bonus plus the fact that truncated rollouts score 0 make
-   "stop after the box" a strongly rewarded behaviour.
-2. *Actual reasoning.* Conditioned on producing a boxed answer, accuracy goes 46.2% → 49.8%.
-   The model more often carries all the steps of a multi-step problem through (see example).
+| subset (fixed by base-model behaviour) | n | base acc | GRPO acc | net problems gained |
+|---|---|---|---|---|
+| base produced a `\boxed{}` | 1117 | 46.2% | 50.3% | +46 |
+| base produced no `\boxed{}` | 202 | 0.0% | 46.0% | +93 |
+
+1. *Termination / format* (about two thirds of the headline). The base model leaves 202 of
+   1,319 answers without a `\boxed{}` (rambles into the length limit, or re-derives the
+   problem after answering). After GRPO that drops to 5, and the model gets 46% of those
+   202 right. The 0.2 format bonus plus the fact that truncated rollouts score 0 make "stop
+   after the box" a strongly rewarded behaviour.
+2. *Actual reasoning* (about one third). On the 1,117 problems the base model already
+   answered in the right format, accuracy goes 46.2% → 50.3% (+4.1 points). The model more
+   often carries all the steps of a multi-step problem through (see example).
 
 Both are real improvements on the task, but if you care only about (2), read the
-conditional number, not the headline.
+fixed-subset number, not the headline. (Comparing "accuracy given a box" across the two
+models directly, 46.2% → 49.8%, is misleading because the denominators are different sets
+of problems.)
 
 <details>
 <summary>Example: base model skips the second step, GRPO model doesn't (test problem, greedy)</summary>
