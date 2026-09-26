@@ -15,7 +15,7 @@ prompt ──► policy samples G=8 completions ──► reward each (correct? 
                                                        │
               advantage_i = (r_i − mean(r)) / std(r)  ◄┘      (group-relative)
                                                        │
-       clipped policy-gradient step on the LoRA weights ◄┘   (no critic, no ref model)
+       policy-gradient step on the LoRA weights  ◄─────────┘   (no critic, no ref model)
 ```
 
 ## Results
@@ -165,8 +165,15 @@ rollouts. Any HF causal LM works in the `model:` field; swap in
 
 * `beta: 0.0` (no KL to a reference policy) is TRL's default and halves memory, since no
   frozen reference model is kept. With LoRA the policy can't drift far in 300 steps anyway.
-* `num_generations: 8` with `per_device_train_batch_size: 8` means one prompt's whole group
-  per micro-batch; `gradient_accumulation_steps` is then "prompts per optimizer step".
+* `num_generations: 8`, `per_device_train_batch_size: 4`, `gradient_accumulation_steps: 8`:
+  one optimizer step sees 32 completions = 4 prompts. `generation_batch_size: 32` samples
+  all of them in a single `generate()` call; the loss pass then runs in micro-batches of 4
+  (half a group), which is what bounds the fp32-logits memory on an 8 GB card.
+* The PPO-style clipping (`epsilon`) is a no-op in this setup. TRL's default
+  `num_iterations: 1` does exactly one gradient pass per generation batch, so the policy
+  that scored the rollouts is the policy being updated, the importance ratio is exactly 1,
+  and `clip_ratio/*` is 0.0 at every step of the log. What actually runs is REINFORCE with
+  group-normalised advantages. Clipping only matters if you raise `num_iterations`.
 * `scale_rewards: group` is the original GRPO normalisation (divide by group std). Groups
   where every completion gets the same reward have zero advantage and contribute nothing;
   `frac_reward_zero_std` in the log tells you how many prompts are being wasted that way.

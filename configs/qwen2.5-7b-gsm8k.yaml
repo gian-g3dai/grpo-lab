@@ -27,7 +27,7 @@ grpo:
   max_completion_length: 512
   temperature: 1.0
   beta: 0.0
-  epsilon: 0.2
+  epsilon: 0.2                    # PPO clip range; inactive with num_iterations=1 (importance ratio is exactly 1)
   scale_rewards: group
   learning_rate: 1.0e-5
   lr_scheduler_type: constant_with_warmup

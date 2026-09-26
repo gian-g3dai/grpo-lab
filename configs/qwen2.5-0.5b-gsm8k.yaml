@@ -24,7 +24,7 @@ grpo:
   temperature: 1.0
   # objective (TRL defaults: DAPO-style token-level loss, no KL term)
   beta: 0.0                       # KL penalty vs. reference; 0 = no ref model, saves memory
-  epsilon: 0.2
+  epsilon: 0.2                    # PPO clip range; inactive with num_iterations=1 (importance ratio is exactly 1)
   scale_rewards: group
   # optimisation
   learning_rate: 2.0e-5           # LoRA tolerates a higher LR than full fine-tuning (~1e-6)
