@@ -24,7 +24,7 @@ def main() -> None:
     delta = 100 * (after["accuracy"] - before["accuracy"])
     md = "\n".join(
         [
-            "| model | n | GSM8K acc (greedy) | `\\boxed{}` rate | mean completion chars |",
+            "| model | n | GSM8K acc (greedy) | numeric `\\boxed{}` rate | mean completion chars |",
             "|---|---|---|---|---|",
             row(f"`{before['model']}` (base)", before),
             row(f"+ GRPO LoRA", after),

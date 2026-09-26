@@ -77,6 +77,7 @@ def main() -> None:
                     "gold": gold,
                     "pred": pred,
                     "correct": pred is not None and pred == normalize_number(gold),
+                    # a \boxed{} whose content parses as a number; a box with no number counts as no format
                     "has_format": pred is not None,
                     "completion": text,
                 }
