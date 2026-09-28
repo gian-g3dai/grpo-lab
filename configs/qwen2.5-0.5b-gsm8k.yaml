@@ -23,7 +23,7 @@ grpo:
   max_completion_length: 384
   temperature: 1.0
   # objective (TRL defaults: DAPO-style token-level loss, no KL term)
-  beta: 0.0                       # KL penalty vs. reference; 0 = no ref model, saves memory
+  beta: 0.0                       # KL penalty vs. reference; 0 skips the reference forward pass
   epsilon: 0.2                    # PPO clip range; inactive with num_iterations=1 (importance ratio is exactly 1)
   scale_rewards: group
   # optimisation
