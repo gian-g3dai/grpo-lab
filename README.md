@@ -31,8 +31,12 @@ answer = number inside the last `\boxed{}`.
 | `Qwen/Qwen2.5-0.5B-Instruct` (base) | 1319 | **39.1%** | 84.7% | 981 |
 | + GRPO LoRA (this repo, 300 steps) | 1319 | **49.7%** | 99.6% | 643 |
 
-**+10.5 points** (paired bootstrap 95% CI **[+7.7, +13.3]**; McNemar exact p ≈ 1e-12).
-261 problems flipped wrong→right, 122 right→wrong.
+**+10.5 points** (paired bootstrap 95% CI **[+7.7, +13.4]**; McNemar exact p ≈ 1e-12).
+261 problems flipped wrong→right, 122 right→wrong. About half of that is the model learning
+to put its answer in a `\boxed{}`. If an answer without a box is scored by the last number it
+states, the base model is at 44.0% and the gain is **+5.7 points** (CI [+3.0, +8.5]). The
+breakdown is below. `grpo_lab.analyze` computes every number in this section from the eval
+files ([`analysis.md`](results/qwen2.5-0.5b-gsm8k/analysis.md)).
 
 ![training curves](results/qwen2.5-0.5b-gsm8k/curves.png)
 
@@ -44,27 +48,36 @@ answer = number inside the last `\boxed{}`.
 
 Cost: 2h01m training (23.9 s/step), 2 × ~15 min eval, peak 7.9 GB VRAM.
 
-**Where the gain comes from.** Split the test set by whether the *base* model produced a
-`\boxed{}` at all, so both models are scored on the same problems:
+**Where the gain comes from.** Split the test set by what the *base* model produced, so both
+models are scored on the same problems. *Lenient* scores an answer that has no `\boxed{}` by
+the last number in the completion, an approximation that can occasionally credit a stray
+number. GRPO's accuracy is identical under both scorings, since only 5 of its answers lack a box.
 
-| subset (fixed by base-model behaviour) | n | base acc | GRPO acc | net problems gained |
-|---|---|---|---|---|
-| base produced a `\boxed{}` | 1117 | 46.2% | 50.3% | +46 |
-| base produced no `\boxed{}` | 202 | 0.0% | 46.0% | +93 |
+| base model output | n | base acc | base acc (lenient) | GRPO acc | net gained | net gained (lenient) |
+|---|---|---|---|---|---|---|
+| numeric `\boxed{}` | 1117 | 46.2% | 46.2% | 50.3% | +46 | +46 |
+| no box, hit the 512-token limit | 67 | 0.0% | 6.0% | 28.4% | +19 | +15 |
+| no box, stopped on its own | 135 | 0.0% | 44.4% | 54.8% | +74 | +14 |
+| all | 1319 | 39.1% | 44.0% | 49.7% | +139 | +75 |
 
-1. *Termination / format* (about two thirds of the headline). The base model leaves 202 of
-   1,319 answers without a `\boxed{}` (rambles into the length limit, or re-derives the
-   problem after answering). After GRPO that drops to 5, and the model gets 46% of those
-   202 right. The 0.2 format bonus plus the fact that truncated rollouts score 0 make "stop
-   after the box" a strongly rewarded behaviour.
-2. *Actual reasoning* (about one third). On the 1,117 problems the base model already
-   answered in the right format, accuracy goes 46.2% → 50.3% (+4.1 points). The model more
-   often carries all the steps of a multi-step problem through (see example).
+1. *Putting the answer in a box* (64 problems, about half the headline). Most of the base
+   model's 202 box-less answers are not truncated: 135 stop normally and give the answer in
+   prose ("So, Gretchen has 70 gold coins."). 60 of those are right,
+   but strict scoring counts them as wrong. After GRPO only 5 of 1,319 answers lack a box.
+   The 0.2 format bonus, and a correctness reward of 0 for any answer without a box, make
+   this the easiest behaviour for GRPO to pick up.
+2. *Finishing within the token budget* (+15). 67 base answers run into the 512-token limit
+   before giving an answer; GRPO gets 28% of those right. Truncated rollouts score 0 in
+   training, and the rollout truncation rate falls from 17% to 1.4% (table above).
+3. *Getting more problems right* (+60). On the 1,117 problems the base model already boxed,
+   accuracy goes 46.2% → 50.3% (+4.1 points, +46 problems), and a further +14 comes from the
+   problems where the base model stopped without a box. The model more often carries all the
+   steps of a multi-step problem through (see example).
 
-Both are real improvements on the task, but if you care only about (2), read the
-fixed-subset number, not the headline. (Comparing "accuracy given a box" across the two
-models directly, 46.2% → 49.8%, is misleading because the denominators are different sets
-of problems.)
+All three are real changes on the task. If you care whether the model solves more problems,
+rather than how it formats them, read the lenient +5.7 or the +4.1 on the boxed subset, not
+the headline. (Comparing "accuracy given a box" across the two models directly, 46.2% →
+49.8%, is misleading because the denominators are different sets of problems.)
 
 <details>
 <summary>Example: base model skips the second step, GRPO model doesn't (test problem, greedy)</summary>
