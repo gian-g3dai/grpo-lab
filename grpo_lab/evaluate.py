@@ -92,6 +92,7 @@ def main() -> None:
         "adapter": args.adapter,
         "split": args.split,
         "n": n,
+        "max_new_tokens": args.max_new_tokens,
         "accuracy": sum(r["correct"] for r in records) / n,
         "format_rate": sum(r["has_format"] for r in records) / n,
         "mean_completion_chars": sum(len(r["completion"]) for r in records) / n,

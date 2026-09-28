@@ -106,14 +106,15 @@ grpo_lab/
   evaluate.py    greedy pass@1 on GSM8K test (before / after), dumps every completion
   plot.py        reward / length curves from trainer_state.json
   summarize.py   markdown table from the two eval files
+  analyze.py     paired stats (bootstrap CI, McNemar), split by base-model output, strict vs lenient scoring
 configs/
   qwen2.5-0.5b-gsm8k.yaml   the run reported above (8 GB GPU)
   qwen2.5-7b-gsm8k.yaml     same recipe, ~8B model, 4-bit QLoRA (needs >=24 GB GPU)
 scripts/
   setup.sh                  uv venv + CUDA torch + deps
-  run_experiment.sh         baseline eval -> train -> eval -> plots -> summary
-results/<run_name>/         eval_before.json, eval_after.json, train_log.csv, curves.png, summary.md
-tests/                      unit tests for the answer parser and rewards
+  run_experiment.sh         baseline eval -> train -> eval -> plots -> summary -> analysis
+results/<run_name>/         eval_{before,after}.json, train_log.csv, curves.png, summary.md, analysis.md
+tests/                      unit tests for the answer parser, rewards and analysis stats
 ```
 
 ## Quick start
@@ -123,7 +124,7 @@ git clone https://github.com/gian-g3dai/grpo-lab && cd grpo-lab
 scripts/setup.sh                                   # needs uv + an NVIDIA GPU; installs uv.lock
 .venv/bin/python -m pytest tests                   # reward parser sanity checks
 
-# whole pipeline for the small model (baseline eval, GRPO, eval, plots)
+# whole pipeline for the small model (baseline eval, GRPO, eval, plots, analysis)
 scripts/run_experiment.sh configs/qwen2.5-0.5b-gsm8k.yaml
 
 # or step by step
@@ -131,6 +132,7 @@ scripts/run_experiment.sh configs/qwen2.5-0.5b-gsm8k.yaml
 .venv/bin/python -m grpo_lab.train    --config configs/qwen2.5-0.5b-gsm8k.yaml --max-steps 20
 .venv/bin/python -m grpo_lab.evaluate --model Qwen/Qwen2.5-0.5B-Instruct --adapter outputs/qwen2.5-0.5b-gsm8k/final --out results/x/eval_after.json --limit 200
 .venv/bin/python -m grpo_lab.plot     --state outputs/qwen2.5-0.5b-gsm8k/final/trainer_state.json --out results/x/curves.png
+.venv/bin/python -m grpo_lab.analyze  --results results/x
 ```
 
 ### Running the ~8B model
