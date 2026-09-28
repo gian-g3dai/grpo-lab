@@ -182,8 +182,10 @@ rollouts. Any HF causal LM works in the `model:` field; swap in
 
 ## Design notes / knobs that mattered
 
-* `beta: 0.0` (no KL to a reference policy) is TRL's default and halves memory, since no
-  frozen reference model is kept. With LoRA the policy can't drift far in 300 steps anyway.
+* `beta: 0.0` (no KL to a reference policy) is TRL's default. It skips the reference forward
+  pass over every rollout, but it does not save a copy of the model: with LoRA, TRL gets the
+  reference by switching the adapter off, so there is only ever one set of base weights. With
+  LoRA the policy can't drift far in 300 steps anyway.
 * `num_generations: 8`, `per_device_train_batch_size: 4`, `gradient_accumulation_steps: 8`:
   one optimizer step sees 32 completions = 4 prompts. `generation_batch_size: 32` samples
   all of them in a single `generate()` call; the loss pass then runs in micro-batches of 4
