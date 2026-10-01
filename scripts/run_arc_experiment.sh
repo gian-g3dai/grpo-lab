@@ -19,21 +19,28 @@ OUT=outputs/$NAME
 RES=results/$NAME
 mkdir -p "$OUT" "$RES"
 
-evals() {  # $1 = before|after, rest = extra args (e.g. --adapter path)
+task_evals() {  # fresh re-arc samples + original test pairs of the trained tasks. $1 = before|after, rest = extra args
   local tag=$1; shift
   $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split rearc-holdout --out "$RES/holdout_$tag.json" "$@"
   $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split training --out "$RES/training_$tag.json" "$@"
+}
+official_eval() {  # public ARC-AGI-1 evaluation set, two attempts (slow: long prompts). $1 = before|after
+  local tag=$1; shift
   $PY -m grpo_lab.evaluate_arc --model "$MODEL" --split evaluation --attempts 2 --out "$RES/eval1_$tag.json" "$@"
 }
 
-echo "== baseline evals: $MODEL"
-evals before
+echo "== baseline task evals: $MODEL"
+task_evals before
 
 echo "== GRPO training: $CONFIG"
 $PY -m grpo_lab.train --config "$CONFIG" 2>&1 | tee "$OUT/train.log"
 
-echo "== post-train evals"
-evals after --adapter "$OUT/final"
+echo "== post-train task evals"
+task_evals after --adapter "$OUT/final"
 
 echo "== plots"
 $PY -m grpo_lab.plot --state "$OUT/final/trainer_state.json" --out "$RES/curves.png" --csv "$RES/train_log.csv"
+
+echo "== official ARC-AGI-1 evaluation set, before / after (slowest part, last)"
+official_eval before
+official_eval after --adapter "$OUT/final"

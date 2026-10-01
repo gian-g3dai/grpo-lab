@@ -19,9 +19,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
-import torch
+# Less fragmentation of the CUDA caching allocator: generation and the loss pass have very
+# different allocation patterns, and on a small GPU the fragmentation alone can push the
+# reserved pool to the VRAM ceiling. Must be set before torch initialises CUDA.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+import torch  # noqa: E402
 import yaml
 from peft import LoraConfig
 from transformers import BitsAndBytesConfig
