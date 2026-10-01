@@ -19,14 +19,17 @@ OUT=outputs/$NAME
 RES=results/$NAME
 mkdir -p "$OUT" "$RES"
 
+# Eval batching: inference only, so the whole 16 GB is available; ~24k prompt chars per batch is ~8 GB.
+EVAL_BATCH=(--batch-size 16 --batch-chars 24000)
 task_evals() {  # fresh re-arc samples + original test pairs of the trained tasks. $1 = before|after, rest = extra args
   local tag=$1; shift
-  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split rearc-holdout --out "$RES/holdout_$tag.json" "$@"
-  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split training --out "$RES/training_$tag.json" "$@"
+  # holdout queries have <= max_output_cells (300) cells, so 512 new tokens is plenty
+  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split rearc-holdout --max-new-tokens 512 "${EVAL_BATCH[@]}" --out "$RES/holdout_$tag.json" "$@"
+  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --config "$CONFIG" --split training "${EVAL_BATCH[@]}" --out "$RES/training_$tag.json" "$@"
 }
 official_eval() {  # public ARC-AGI-1 evaluation set, two attempts (slow: long prompts). $1 = before|after
   local tag=$1; shift
-  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --split evaluation --attempts 2 --out "$RES/eval1_$tag.json" "$@"
+  $PY -m grpo_lab.evaluate_arc --model "$MODEL" --split evaluation --attempts 2 "${EVAL_BATCH[@]}" --out "$RES/eval1_$tag.json" "$@"
 }
 
 echo "== baseline task evals: $MODEL"
