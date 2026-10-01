@@ -46,6 +46,9 @@ def main() -> None:
         ("reward", "Total reward (mean over group)"),
         ("rewards/correctness_reward/mean", "Correctness reward"),
         ("rewards/format_reward/mean", "Format reward"),
+        ("rewards/arc_exact/mean", "Exact-grid reward"),
+        ("rewards/arc_partial/mean", "Partial (cell) reward"),
+        ("rewards/arc_format/mean", "Format reward"),
         ("completions/mean_length", "Mean completion length (tokens)"),
     ]
     panels = [(k, t) for k, t in panels if any(k in l for l in logs)]

@@ -120,11 +120,16 @@ grpo_lab/
   plot.py        reward / length curves from trainer_state.json
   summarize.py   markdown table from the two eval files
   analyze.py     paired stats (bootstrap CI, McNemar), split by base-model output, strict vs lenient scoring
+  arc.py         ARC-AGI task: grid <-> text, prompts, re-arc training set + holdout, official eval sets
+  arc_rewards.py arc_exact (1.0), arc_partial (0.5 x cell accuracy), arc_format (0.1)
+  evaluate_arc.py pass@1 / pass@2 / official task score on re-arc holdout or ARC-1/-2 splits
 configs/
   qwen2.5-0.5b-gsm8k.yaml   the run reported above (8 GB GPU)
   qwen2.5-7b-gsm8k.yaml     same recipe, ~8B model, 4-bit QLoRA (needs >=24 GB GPU)
+  qwen2.5-1.5b-arc-pilot.yaml  ARC experiment: 1.5B model, 50 ARC-1 training tasks via re-arc (16 GB GPU)
 scripts/
   setup.sh                  uv venv + CUDA torch + deps
+  get_arc_data.sh           clones ARC-AGI-1/-2 and re-arc into data/ (git-ignored)
   run_experiment.sh         baseline eval -> train -> eval -> plots -> summary -> analysis
 results/<run_name>/         eval_{before,after}.json, train_log.csv, curves.png, summary.md, analysis.md
 tests/                      unit tests for the answer parser, rewards and analysis stats
@@ -162,6 +167,31 @@ rollouts. Any HF causal LM works in the `model:` field; swap in
 [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) or
 [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
 (gated) and adjust `target_modules` if the projection names differ.
+
+### ARC-AGI (experimental)
+
+Same trainer, different verifiable task: the model sees a few input/output grid pairs of one
+ARC task plus a test input, and must write the output grid (rows of digits in a ```` ```grid ````
+block). Training prompts are built from [re-arc](https://github.com/michaelhodel/re-arc),
+which provides 1000 generated, verified examples for each of the 400 ARC-AGI-1 training
+tasks, so the model can be trained on *fresh* instances of a task and scored on held-out ones.
+Reward: 1.0 for an exact grid, up to 0.5 for per-cell accuracy when the shape is right (keeps a
+gradient alive inside groups where nothing is exactly right), 0.1 for a clean single-grid answer.
+
+```bash
+scripts/get_arc_data.sh                            # ARC-AGI-1, ARC-AGI-2, re-arc  (~200 MB)
+CFG=configs/qwen2.5-1.5b-arc-pilot.yaml; M=Qwen/Qwen2.5-1.5B-Instruct
+.venv/bin/python -m grpo_lab.evaluate_arc --model $M --config $CFG --split rearc-holdout --out results/arc/holdout_before.json
+.venv/bin/python -m grpo_lab.train        --config $CFG
+.venv/bin/python -m grpo_lab.evaluate_arc --model $M --config $CFG --adapter outputs/qwen2.5-1.5b-arc-pilot/final --split rearc-holdout --out results/arc/holdout_after.json
+.venv/bin/python -m grpo_lab.evaluate_arc --model $M --adapter ... --split evaluation --attempts 2 --out results/arc/eval1_after.json   # official ARC-1 eval, pass@2
+```
+
+`--split rearc-holdout` scores fresh re-arc samples of the trained tasks (the "did it learn
+these tasks" number); `--split training --config $CFG` scores the original test pairs of the
+same tasks; `--split evaluation [--version 2]` scores the public ARC-AGI-1 (400 tasks) or
+ARC-AGI-2 (120 tasks) evaluation sets with the official metric (`task_score`: two attempts per
+test grid, averaged per task).
 
 ## How the pieces fit
 

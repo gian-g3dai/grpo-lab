@@ -6,7 +6,8 @@ Usage:
 The YAML has four sections:
 
     model / run_name        which HF model, name of the output folder
-    data                    dataset split + optional subset size
+    task                    'gsm8k' (default) or 'arc' (see arc.py)
+    data                    dataset split + optional subset size (gsm8k) / task selection (arc)
     lora                    PEFT LoRA hyperparameters (omit for full fine-tuning)
     quantization            4-bit QLoRA loading (for big models on small GPUs)
     grpo                    passed straight into ``trl.GRPOConfig``
@@ -26,6 +27,8 @@ from peft import LoraConfig
 from transformers import BitsAndBytesConfig
 from trl import GRPOConfig, GRPOTrainer
 
+from .arc import load_arc_train
+from .arc_rewards import ARC_REWARD_FUNCS
 from .data import load_gsm8k
 from .rewards import REWARD_FUNCS
 
@@ -50,11 +53,19 @@ def main() -> None:
     grpo_config = GRPOConfig(output_dir=output_dir, run_name=run_name, **grpo_kwargs)
 
     data_cfg = cfg.get("data", {})
-    train_ds = load_gsm8k(data_cfg.get("split", "train"), limit=data_cfg.get("limit"), seed=grpo_config.seed)
-    print(f"train examples: {len(train_ds)}")
+    task = cfg.get("task", "gsm8k")
+    if task == "gsm8k":
+        train_ds = load_gsm8k(data_cfg.get("split", "train"), limit=data_cfg.get("limit"), seed=grpo_config.seed)
+        all_rewards = REWARD_FUNCS
+    elif task == "arc":
+        train_ds = load_arc_train(data_cfg, seed=grpo_config.seed)
+        all_rewards = ARC_REWARD_FUNCS
+    else:
+        raise ValueError(f"unknown task {task!r}")
+    print(f"task: {task}  train examples: {len(train_ds)}")
 
-    reward_names = cfg.get("rewards", list(REWARD_FUNCS))
-    reward_funcs = [REWARD_FUNCS[n] for n in reward_names]
+    reward_names = cfg.get("rewards", list(all_rewards))
+    reward_funcs = [all_rewards[n] for n in reward_names]
 
     peft_config = None
     if "lora" in cfg:

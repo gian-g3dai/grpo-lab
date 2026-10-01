@@ -1,0 +1,46 @@
+# ARC pilot: Qwen2.5-1.5B-Instruct, LoRA, direct grid output on re-arc samples of the
+# 50 smallest ARC-1 training tasks. Sized for a 16 GB GPU (RTX 3080 Laptop, WSL2).
+run_name: qwen2.5-1.5b-arc-pilot
+model: Qwen/Qwen2.5-1.5B-Instruct
+task: arc
+
+data:
+  n_tasks: 50                 # ARC-1 training tasks, chosen by `select`
+  select: smallest            # by median re-arc sample size -> short prompts
+  samples_per_task: 200       # fresh re-arc prompts per task (10,000 total, we see max_steps*4 of them)
+  n_demos: 3                  # demo pairs per prompt
+  holdout_per_task: 20        # re-arc samples per task reserved for post-training eval
+  max_prompt_cells: 1500      # skip prompts bigger than this (~tokens)
+  max_output_cells: 300       # skip queries whose output grid is bigger than this
+
+rewards: [arc_exact, arc_partial, arc_format]
+
+lora:
+  r: 32
+  lora_alpha: 64
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+grpo:
+  num_generations: 8
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8      # 32 completions = 4 prompts per optimizer step
+  generation_batch_size: 32
+  max_completion_length: 512
+  temperature: 1.0
+  beta: 0.0
+  epsilon: 0.2
+  scale_rewards: group
+  learning_rate: 2.0e-5
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 10
+  max_grad_norm: 0.5
+  max_steps: 100
+  gradient_checkpointing: true
+  bf16: true
+  logging_steps: 1
+  save_strategy: steps
+  save_steps: 50
+  save_total_limit: 1
+  report_to: none
+  seed: 0
