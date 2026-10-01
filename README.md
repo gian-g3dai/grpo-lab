@@ -187,6 +187,11 @@ CFG=configs/qwen2.5-1.5b-arc-pilot.yaml; M=Qwen/Qwen2.5-1.5B-Instruct
 .venv/bin/python -m grpo_lab.evaluate_arc --model $M --adapter ... --split evaluation --attempts 2 --out results/arc/eval1_after.json   # official ARC-1 eval, pass@2
 ```
 
+TRL's fused log-softmax kernel is a Triton kernel, and Triton needs a C compiler at runtime
+to build its CUDA driver shim. On a bare WSL2 image without `gcc`, either `apt install
+build-essential` or, without sudo, `conda create -p ~/.conda/envs/cc -c conda-forge gcc_linux-64`
+and `export CC=~/.conda/envs/cc/bin/x86_64-conda-linux-gnu-gcc` before training.
+
 `--split rearc-holdout` scores fresh re-arc samples of the trained tasks (the "did it learn
 these tasks" number); `--split training --config $CFG` scores the original test pairs of the
 same tasks; `--split evaluation [--version 2]` scores the public ARC-AGI-1 (400 tasks) or

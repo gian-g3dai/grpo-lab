@@ -7,6 +7,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 CONFIG="${1:?usage: $0 <config.yaml>}"
 PY=.venv/bin/python
+# Triton (TRL's fused log-softmax) needs a C compiler at runtime; fall back to a conda gcc if none is on PATH.
+if ! command -v "${CC:-cc}" >/dev/null 2>&1; then
+  CONDA_GCC=$HOME/.conda/envs/cc/bin/x86_64-conda-linux-gnu-gcc
+  [[ -x $CONDA_GCC ]] && export CC=$CONDA_GCC
+fi
 
 NAME=$($PY -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['run_name'])")
 MODEL=$($PY -c "import yaml; print(yaml.safe_load(open('$CONFIG'))['model'])")
