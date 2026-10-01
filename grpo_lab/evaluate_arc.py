@@ -74,6 +74,26 @@ def build_rows(args) -> list[dict]:
     return rows
 
 
+def batches(rows: list[dict], max_rows: int, max_chars: int):
+    """Group rows into batches of at most ``max_rows`` whose prompts total at most ``max_chars``.
+
+    ARC prompts range from ~300 to ~9000 tokens (about one char per token). A fixed batch size
+    either wastes the GPU on short prompts or runs out of memory on long ones; a character
+    budget keeps the padded batch roughly constant in size.
+    """
+    batch: list[dict] = []
+    chars = 0
+    for r in rows:
+        n = len(r["prompt"][1]["content"])
+        if batch and (len(batch) >= max_rows or chars + n > max_chars):
+            yield batch
+            batch, chars = [], 0
+        batch.append(r)
+        chars += n
+    if batch:
+        yield batch
+
+
 @torch.no_grad()
 def generate(tok, model, prompts, max_new_tokens: int, sample: bool, temperature: float) -> list[str]:
     texts = [tok.apply_chat_template(p, tokenize=False, add_generation_prompt=True) for p in prompts]
@@ -94,7 +114,8 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=0.7, help="for the sampled 2nd attempt")
     ap.add_argument("--max-prompt-cells", type=int, default=6000, help="skip (score 0) prompts bigger than this")
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=8, help="max rows per batch")
+    ap.add_argument("--batch-chars", type=int, default=12000, help="max total prompt chars (~tokens) per batch")
     ap.add_argument("--max-new-tokens", type=int, default=1024)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
@@ -107,8 +128,7 @@ def main() -> None:
 
     records = []
     t0 = time.time()
-    for i in range(0, len(rows), args.batch_size):
-        batch = rows[i : i + args.batch_size]
+    for batch in batches(rows, args.batch_size, args.batch_chars):
         prompts = [r["prompt"] for r in batch]
         # prompt_cells is ~tokens; skip anything that cannot fit so one giant task does not OOM the run
         keep = [len(r["prompt"][1]["content"]) <= args.max_prompt_cells * 1.6 for r in batch]
@@ -120,7 +140,7 @@ def main() -> None:
             for k, g in zip(idx, gen):
                 outs[k] = g
             if args.attempts == 2:
-                torch.manual_seed(args.seed + i)
+                torch.manual_seed(args.seed + len(records))
                 gen2 = generate(tok, model, [prompts[k] for k in idx], args.max_new_tokens, True, args.temperature)
                 for k, g in zip(idx, gen2):
                     outs2[k] = g
