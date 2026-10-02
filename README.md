@@ -128,6 +128,8 @@ configs/
   qwen2.5-7b-gsm8k.yaml     same recipe, ~8B model, 4-bit QLoRA (needs >=24 GB GPU)
   qwen2.5-1.5b-arc-pilot.yaml  ARC experiment: 1.5B model, 50 ARC-1 training tasks via re-arc (16 GB GPU)
   qwen2.5-1.5b-arc-pilot-8gb.yaml  same ARC recipe, bf16 policy + smaller rollout/loss batches (8 GB GPU)
+  qwen2.5-7b-arc-a100.yaml     same ARC recipe, Qwen2.5-7B bf16 LoRA, sized for a 40 GB A100 (not yet run)
+  qwen2.5-7b-arc-h100.yaml     same, all 32 rollouts per generate() call, for an 80 GB H100/A100 (not yet run)
 scripts/
   setup.sh                  uv venv + CUDA torch + deps
   get_arc_data.sh           clones ARC-AGI-1/-2 and re-arc into data/ (git-ignored)
@@ -191,7 +193,9 @@ CFG=configs/qwen2.5-1.5b-arc-pilot.yaml; M=Qwen/Qwen2.5-1.5B-Instruct
 
 `configs/qwen2.5-1.5b-arc-pilot.yaml` is sized for a 16 GB GPU; `configs/qwen2.5-1.5b-arc-pilot-8gb.yaml`
 is the same recipe on an 8 GB card (8 rollouts per `generate()` call, loss micro-batch of 1, and
-the policy loaded in bf16: see the note below). `scripts/run_arc_experiment.sh <config>` runs
+the policy loaded in bf16: see the note below). `configs/qwen2.5-7b-arc-{a100,h100}.yaml` move the same recipe to Qwen2.5-7B-Instruct in bf16 LoRA for a
+rented 40 GB or 80 GB card (not yet run; `notebooks/arc_pilot.ipynb` picks one by GPU size).
+`scripts/run_arc_experiment.sh <config>` runs
 the whole pipeline; `EVAL_BATCH_SIZE` / `EVAL_BATCH_CHARS` shrink the eval batches on a small GPU.
 
 **TRL loads the policy in fp32 by default.** When `GRPOTrainer` gets a model *name*, it loads it
