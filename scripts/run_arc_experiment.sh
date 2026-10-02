@@ -19,8 +19,9 @@ OUT=outputs/$NAME
 RES=results/$NAME
 mkdir -p "$OUT" "$RES"
 
-# Eval batching: inference only, so the whole 16 GB is available; ~24k prompt chars per batch is ~8 GB.
-EVAL_BATCH=(--batch-size 16 --batch-chars 24000)
+# Eval batching: inference only, so the whole GPU is available. ~24k prompt chars per batch is ~8 GB
+# on a 16 GB card; on an 8 GB card use e.g. EVAL_BATCH_CHARS=10000.
+EVAL_BATCH=(--batch-size "${EVAL_BATCH_SIZE:-16}" --batch-chars "${EVAL_BATCH_CHARS:-24000}")
 task_evals() {  # fresh re-arc samples + original test pairs of the trained tasks. $1 = before|after, rest = extra args
   local tag=$1; shift
   # holdout queries have <= max_output_cells (300) cells, so 512 new tokens is plenty

@@ -127,6 +127,7 @@ configs/
   qwen2.5-0.5b-gsm8k.yaml   the run reported above (8 GB GPU)
   qwen2.5-7b-gsm8k.yaml     same recipe, ~8B model, 4-bit QLoRA (needs >=24 GB GPU)
   qwen2.5-1.5b-arc-pilot.yaml  ARC experiment: 1.5B model, 50 ARC-1 training tasks via re-arc (16 GB GPU)
+  qwen2.5-1.5b-arc-pilot-8gb.yaml  same ARC recipe, bf16 policy + smaller rollout/loss batches (8 GB GPU)
 scripts/
   setup.sh                  uv venv + CUDA torch + deps
   get_arc_data.sh           clones ARC-AGI-1/-2 and re-arc into data/ (git-ignored)
@@ -186,6 +187,18 @@ CFG=configs/qwen2.5-1.5b-arc-pilot.yaml; M=Qwen/Qwen2.5-1.5B-Instruct
 .venv/bin/python -m grpo_lab.evaluate_arc --model $M --config $CFG --adapter outputs/qwen2.5-1.5b-arc-pilot/final --split rearc-holdout --out results/arc/holdout_after.json
 .venv/bin/python -m grpo_lab.evaluate_arc --model $M --adapter ... --split evaluation --attempts 2 --out results/arc/eval1_after.json   # official ARC-1 eval, pass@2
 ```
+
+`configs/qwen2.5-1.5b-arc-pilot.yaml` is sized for a 16 GB GPU; `configs/qwen2.5-1.5b-arc-pilot-8gb.yaml`
+is the same recipe on an 8 GB card (8 rollouts per `generate()` call, loss micro-batch of 1, and
+the policy loaded in bf16: see the note below). `scripts/run_arc_experiment.sh <config>` runs
+the whole pipeline; `EVAL_BATCH_SIZE` / `EVAL_BATCH_CHARS` shrink the eval batches on a small GPU.
+
+**TRL loads the policy in fp32 by default.** When `GRPOTrainer` gets a model *name*, it loads it
+in float32 unless `model_init_kwargs: {dtype: bfloat16}` is set in the config (transformers
+itself would infer bf16 from the checkpoint). The 1.5B model is 6.2 GB of weights in fp32 versus
+3.1 GB in bf16, which is the difference between an immediate OOM and 6.7 GB peak on an 8 GB card.
+The GSM8K run above was done with fp32 base weights (LoRA weights are fp32 either way; only the
+frozen base changes), which is also why it peaked at 7.9 GB for a 0.5B model.
 
 TRL's fused log-softmax kernel is a Triton kernel, and Triton needs a C compiler at runtime
 to build its CUDA driver shim. On a bare WSL2 image without `gcc`, either `apt install
