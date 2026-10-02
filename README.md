@@ -132,6 +132,7 @@ scripts/
   setup.sh                  uv venv + CUDA torch + deps
   get_arc_data.sh           clones ARC-AGI-1/-2 and re-arc into data/ (git-ignored)
   run_experiment.sh         baseline eval -> train -> eval -> plots -> summary -> analysis
+notebooks/arc_pilot.ipynb   minimal Colab / Jupyter driver for the ARC pipeline on a rented GPU
 results/<run_name>/         eval_{before,after}.json, train_log.csv, curves.png, summary.md, analysis.md
 tests/                      unit tests for the answer parser, rewards and analysis stats
 ```
