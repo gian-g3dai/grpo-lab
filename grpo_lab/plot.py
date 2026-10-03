@@ -32,7 +32,11 @@ def main() -> None:
     ap.add_argument("--csv", default=None, help="also dump the raw log history as CSV")
     args = ap.parse_args()
 
-    logs = [l for l in json.load(open(args.state))["log_history"] if "step" in l and "reward" in l]
+    history = json.load(open(args.state))["log_history"]
+    logs = [l for l in history if "step" in l and "reward" in l]
+    is_sft = not logs
+    if is_sft:  # an SFT run: no reward columns, plot the loss instead
+        logs = [l for l in history if "step" in l and "loss" in l]
     steps = [l["step"] for l in logs]
 
     if args.csv:
@@ -43,7 +47,7 @@ def main() -> None:
             w.writerows(logs)
 
     panels = [
-        ("reward", "Total reward (mean over group)"),
+        ("loss", "SFT loss (completion tokens)") if is_sft else ("reward", "Total reward (mean over group)"),
         ("rewards/correctness_reward/mean", "Correctness reward"),
         ("rewards/format_reward/mean", "Format reward"),
         ("rewards/arc_exact/mean", "Exact-grid reward"),

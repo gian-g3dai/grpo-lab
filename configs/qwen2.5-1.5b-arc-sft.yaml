@@ -1,0 +1,48 @@
+# Augmented SFT on re-arc for a 16-24 GB card (RTX 4090, L4, A10G): Qwen2.5-1.5B-Instruct, bf16 LoRA,
+# all 400 ARC-1 training tasks with dihedral + colour augmentation. Same recipe as the 7B config;
+# the 2024 ARC Prize runner-up reached 40% on the private set from a 0.5B Qwen with this kind of
+# data plus test-time training, so the small model is not a toy. Not yet run.
+run_name: qwen2.5-1.5b-arc-sft
+model: Qwen/Qwen2.5-1.5B-Instruct
+task: arc
+
+data:
+  n_tasks: null
+  select: all
+  samples_per_task: 100
+  n_demos: [2, 4]
+  holdout_per_task: 20
+  max_prompt_cells: 2000
+  max_output_cells: 400
+  augment:
+    dihedral: true
+    color_permutation: true
+    keep_background: true
+
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+sft:
+  model_init_kwargs: {dtype: bfloat16}
+  max_length: 3072
+  completion_only_loss: true
+  packing: false
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  num_train_epochs: 1
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  gradient_checkpointing: true
+  bf16: true
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 1
+  report_to: none
+  seed: 0

@@ -121,7 +121,9 @@ grpo_lab/
   summarize.py   markdown table from the two eval files
   analyze.py     paired stats (bootstrap CI, McNemar), split by base-model output, strict vs lenient scoring
   arc.py         ARC-AGI task: grid <-> text, prompts, re-arc training set + holdout, official eval sets
+  arc_augment.py the 8 dihedral symmetries + colour permutations (with inverses) used to augment ARC data
   arc_rewards.py arc_exact (1.0), arc_partial (0.5 x cell accuracy), arc_format (0.1)
+  sft.py         augmented SFT on re-arc (TRL SFTTrainer + LoRA): the stage before GRPO on ARC
   evaluate_arc.py pass@1 / pass@2 / official task score on re-arc holdout or ARC-1/-2 splits
 configs/
   qwen2.5-0.5b-gsm8k.yaml   the run reported above (8 GB GPU)
@@ -130,10 +132,14 @@ configs/
   qwen2.5-1.5b-arc-pilot-8gb.yaml  same ARC recipe, bf16 policy + smaller rollout/loss batches (8 GB GPU)
   qwen2.5-7b-arc-a100.yaml     same ARC recipe, Qwen2.5-7B bf16 LoRA, sized for a 40 GB A100 (not yet run)
   qwen2.5-7b-arc-h100.yaml     same, all 32 rollouts per generate() call, for an 80 GB H100/A100 (not yet run)
+  qwen2.5-7b-arc-sft.yaml      augmented SFT, Qwen2.5-7B, all 400 ARC-1 training tasks, A100 (not yet run)
+  qwen2.5-1.5b-arc-sft.yaml    same recipe, 1.5B model, for a 16-24 GB card (not yet run)
+  qwen2.5-7b-arc-grpo-from-sft.yaml  the ARC GRPO recipe starting from the SFT adapter (init_adapter)
 scripts/
   setup.sh                  uv venv + CUDA torch + deps
   get_arc_data.sh           clones ARC-AGI-1/-2 and re-arc into data/ (git-ignored)
   run_experiment.sh         baseline eval -> train -> eval -> plots -> summary -> analysis
+  run_arc_experiment.sh     the same for ARC, for a GRPO or an SFT config (picks the trainer from the YAML)
 notebooks/arc_pilot.ipynb   minimal Colab / Jupyter driver for the ARC pipeline on a rented GPU
 results/<run_name>/         eval_{before,after}.json, train_log.csv, curves.png, summary.md, analysis.md
 tests/                      unit tests for the answer parser, rewards and analysis stats
@@ -215,6 +221,41 @@ these tasks" number); `--split training --config $CFG` scores the original test 
 same tasks; `--split evaluation [--version 2]` scores the public ARC-AGI-1 (400 tasks) or
 ARC-AGI-2 (120 tasks) evaluation sets with the official metric (`task_score`: two attempts per
 test grid, averaged per task).
+
+#### Augmented SFT before RL
+
+GRPO only amplifies what the sampler already does sometimes. A stock instruct model almost never
+writes an exact ARC output grid, so on the official tasks nearly every group of 8 rollouts has
+zero reward variance and no gradient; the partial (cell) reward keeps something alive, but it
+cannot create the skill. Every strong open-weights ARC entry (the 2024 ARC Prize winners, the MIT
+test-time-training paper) starts instead from supervised fine-tuning on re-arc examples shown in
+random **views**: one of the 8 dihedral symmetries (rotations, mirrors, transposes) and a random
+relabelling of colours 1-9, applied to every grid of an example. The rule is the same in every
+view, so the model has to learn the rule rather than the picture. `grpo_lab.sft` is that stage;
+`arc_augment.py` holds the transforms (with inverses, for test-time training and voting later).
+
+```bash
+scripts/run_arc_experiment.sh configs/qwen2.5-7b-arc-sft.yaml              # evals -> SFT -> evals
+EVAL_LIMIT=1000 OFFICIAL_LIMIT=100 scripts/run_arc_experiment.sh configs/qwen2.5-7b-arc-sft.yaml   # on a budget
+scripts/run_arc_experiment.sh configs/qwen2.5-7b-arc-grpo-from-sft.yaml    # then GRPO from the SFT adapter
+```
+
+The SFT config trains Qwen2.5-7B-Instruct (bf16 LoRA, r=64) on all 400 ARC-1 training tasks,
+100 augmented re-arc examples each with 2-4 demos, for one epoch; the target is the gold grid in
+a ```` ```grid ```` block and nothing else, and the loss is on the completion only. The data is
+TRL's conversational prompt-completion format, so the chat template is the same one the GRPO
+trainer and the evaluator apply. Rows whose prompt + grid exceed `sft.max_length` are dropped,
+not truncated (truncation would cut the grid, the only part with a loss). `data.augment` works
+for the GRPO configs too (`qwen2.5-7b-arc-grpo-from-sft.yaml` uses it); the holdout and
+official evals are never augmented.
+
+`init_adapter:` in a GRPO config continues training an existing adapter instead of creating a
+fresh LoRA, so the final adapter is self-contained and the evaluator's `--adapter` loads it as
+usual. The pipeline script scores the initial adapter in the "before" evals, so the deltas are
+the RL stage's own. The GRPO holdout (50 smallest tasks x 20) is a subset of the SFT holdout
+(400 x 20) because both use the same seeded split per task; `EVAL_LIMIT` caps the 8,000-prompt
+SFT holdout eval. None of the SFT configs has been run yet; the sizes in their comments are
+estimates.
 
 ## How the pieces fit
 
