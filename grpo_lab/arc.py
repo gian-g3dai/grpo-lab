@@ -14,6 +14,8 @@ Three data sources, all plain JSON on disk (see ``scripts/get_arc_data.sh``):
 Training examples are built from re-arc: for one task, ``n_demos`` demo pairs plus
 one query pair, all fresh samples. A fixed slice of every task's samples is held
 out so "fresh samples of the trained tasks" can be scored after training.
+Optionally every training example is shown in a random view (rotation / mirror /
+colour relabelling, see ``arc_augment.py``), the same view for all its grids.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ import re
 from pathlib import Path
 
 from datasets import Dataset
+
+from .arc_augment import random_augmentation
 
 Grid = list[list[int]]
 
@@ -171,6 +175,19 @@ def _example(task_id: str, demos: list[dict], query: dict) -> dict:
     }
 
 
+def answer_to_completion(answer: str) -> str:
+    """The target text for SFT: the gold grid alone, in the block the parser and rewards expect."""
+    return f"```grid\n{answer}\n```"
+
+
+def _pick_n_demos(rng: random.Random, n_demos: int | list[int]) -> int:
+    """``n_demos`` is an int, or ``[lo, hi]`` to vary the number of demos per example (ARC tasks have 2-5)."""
+    if isinstance(n_demos, int):
+        return n_demos
+    lo, hi = n_demos
+    return rng.randint(lo, hi)
+
+
 def _fits(demos: list[dict], query: dict, max_prompt_cells: int, max_output_cells: int) -> bool:
     return prompt_cells(demos, query["input"]) <= max_prompt_cells and n_cells(query["output"]) <= max_output_cells
 
@@ -178,17 +195,21 @@ def _fits(demos: list[dict], query: dict, max_prompt_cells: int, max_output_cell
 def build_rearc_dataset(
     task_ids: list[str],
     samples_per_task: int,
-    n_demos: int = 3,
+    n_demos: int | list[int] = 3,
     holdout_per_task: int = 20,
     max_prompt_cells: int = 2000,
     max_output_cells: int = 400,
     seed: int = 0,
+    augment: dict | None = None,
     data_dir: Path = DATA_DIR,
 ) -> Dataset:
     """Training set: ``samples_per_task`` prompts per task, each with fresh re-arc demos + query.
 
     Oversized candidates (long prompt or big output grid) are skipped, so a task with
     mostly large grids may contribute fewer than ``samples_per_task`` examples.
+    With ``augment`` (the ``data.augment`` config block) every example is drawn in a random
+    view: one dihedral symmetry and one colour permutation applied to all of its grids.
+    Grid sizes are unchanged by augmentation, so the size filters see the same numbers.
     """
     rows = []
     for task_id in task_ids:
@@ -197,10 +218,13 @@ def build_rearc_dataset(
         made, tries = 0, 0
         while made < samples_per_task and tries < samples_per_task * 10:
             tries += 1
-            picks = rng.sample(pool, n_demos + 1)
+            picks = rng.sample(pool, _pick_n_demos(rng, n_demos) + 1)
             demos, query = picks[:-1], picks[-1]
             if not _fits(demos, query, max_prompt_cells, max_output_cells):
                 continue
+            aug = random_augmentation(rng, augment)
+            if not aug.is_identity:
+                demos, query = aug.apply_pairs(demos), aug.apply_pairs([query])[0]
             rows.append(_example(task_id, demos, query))
             made += 1
     rng = random.Random(seed)
@@ -210,20 +234,23 @@ def build_rearc_dataset(
 
 def build_rearc_holdout(
     task_ids: list[str],
-    n_demos: int = 3,
+    n_demos: int | list[int] = 3,
     holdout_per_task: int = 20,
     max_prompt_cells: int = 2000,
     max_output_cells: int = 400,
     seed: int = 0,
     data_dir: Path = DATA_DIR,
 ) -> list[dict]:
-    """Eval set: every held-out sample of every task is a query, demos drawn from the train pool."""
+    """Eval set: every held-out sample of every task is a query, demos drawn from the train pool.
+
+    Never augmented: the holdout is scored in the original frame, like the official tasks.
+    """
     rows = []
     for task_id in task_ids:
         pool, holdout = split_rearc(task_id, holdout_per_task, seed, data_dir)
         rng = random.Random(f"{seed}:{task_id}:holdout")
         for query in holdout:
-            demos = rng.sample(pool, n_demos)
+            demos = rng.sample(pool, _pick_n_demos(rng, n_demos))
             if not _fits(demos, query, max_prompt_cells, max_output_cells):
                 continue
             rows.append(_example(task_id, demos, query))
@@ -253,7 +280,7 @@ def build_official_eval(
 
 
 def load_arc_train(data_cfg: dict, seed: int) -> Dataset:
-    """Entry point used by ``train.py`` when the config says ``task: arc``."""
+    """Entry point used by ``train.py`` (GRPO) and ``sft.py`` when the config says ``task: arc``."""
     ids = select_task_ids(data_cfg.get("n_tasks"), data_cfg.get("select", "smallest"))
     return build_rearc_dataset(
         ids,
@@ -263,4 +290,5 @@ def load_arc_train(data_cfg: dict, seed: int) -> Dataset:
         max_prompt_cells=data_cfg.get("max_prompt_cells", 2000),
         max_output_cells=data_cfg.get("max_output_cells", 400),
         seed=seed,
+        augment=data_cfg.get("augment"),
     )

@@ -1,0 +1,52 @@
+# Augmented SFT on re-arc: Qwen2.5-7B-Instruct, bf16 LoRA, all 400 ARC-1 training tasks, every
+# example in a random view (one of the 8 dihedral symmetries + a random relabelling of colours 1-9).
+# This is the stage *before* GRPO: it teaches the grid format and the rules; RL then has a
+# non-zero pass@k to amplify (configs/qwen2.5-7b-arc-grpo-from-sft.yaml). Sized for an A100
+# 40/80 GB. With these data settings the builder yields 39,744 examples (399 tasks; one has no sample
+# small enough), median 1,800 tokens, max ~2,700, so nothing is dropped at max_length 3072; one epoch is
+# ~1,240 optimizer steps of 32 sequences. Training itself has not been run yet.
+# To train longer, raise samples_per_task (re-arc has 1000 samples per task, 20 are held out).
+run_name: qwen2.5-7b-arc-sft
+model: Qwen/Qwen2.5-7B-Instruct
+task: arc
+
+data:
+  n_tasks: null               # all 400 ARC-1 training tasks
+  select: all
+  samples_per_task: 100       # fresh re-arc prompts per task; each gets its own random augmentation
+  n_demos: [2, 4]             # demos per prompt, uniform in this range (official tasks have 2-5)
+  holdout_per_task: 20        # same split as the GRPO configs, so their holdouts are a subset of this one
+  max_prompt_cells: 2000      # skip prompts bigger than this (~tokens)
+  max_output_cells: 400       # skip queries whose output grid is bigger than this
+  augment:
+    dihedral: true            # random rotation / mirror / transpose per example
+    color_permutation: true   # random relabelling of colours per example
+    keep_background: true     # colour 0 stays 0
+
+lora:
+  r: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+sft:
+  model_init_kwargs: {dtype: bfloat16}   # TRL loads the policy in fp32 unless told otherwise
+  max_length: 3072                       # rows longer than this are dropped, not truncated (see sft.py)
+  completion_only_loss: true             # loss on the grid only, not on the prompt
+  packing: false
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8         # 32 sequences per optimizer step
+  learning_rate: 1.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  num_train_epochs: 1
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  gradient_checkpointing: true
+  bf16: true
+  logging_steps: 10
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 1
+  report_to: none
+  seed: 0

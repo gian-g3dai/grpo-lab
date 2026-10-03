@@ -9,6 +9,8 @@ The YAML has four sections:
     task                    'gsm8k' (default) or 'arc' (see arc.py)
     data                    dataset split + optional subset size (gsm8k) / task selection (arc)
     lora                    PEFT LoRA hyperparameters (omit for full fine-tuning)
+    init_adapter            path to an existing LoRA (e.g. the output of sft.py) to keep training
+                            with GRPO; replaces ``lora`` (the adapter's own config is used)
     quantization            4-bit QLoRA loading (for big models on small GPUs)
     grpo                    passed straight into ``trl.GRPOConfig``
 
@@ -29,8 +31,8 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch  # noqa: E402
 import yaml
-from peft import LoraConfig
-from transformers import BitsAndBytesConfig
+from peft import LoraConfig, PeftModel
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 from trl import GRPOConfig, GRPOTrainer
 
 from .arc import load_arc_train
@@ -73,10 +75,6 @@ def main() -> None:
     reward_names = cfg.get("rewards", list(all_rewards))
     reward_funcs = [all_rewards[n] for n in reward_names]
 
-    peft_config = None
-    if "lora" in cfg:
-        peft_config = LoraConfig(task_type="CAUSAL_LM", **cfg["lora"])
-
     quant_config = None
     if cfg.get("quantization", {}).get("load_in_4bit"):
         quant_config = BitsAndBytesConfig(
@@ -86,8 +84,30 @@ def main() -> None:
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
+    peft_config = None
+    model = cfg["model"]
+    if cfg.get("init_adapter"):
+        # Continue training an existing LoRA (the SFT stage's output). TRL only builds a fresh
+        # adapter from ``peft_config``, and refuses a PeftModel plus a peft_config, so the model is
+        # loaded here and handed over as an object. ``model_init_kwargs`` is then ours to apply.
+        if "lora" in cfg:
+            raise SystemExit("config has both `lora` and `init_adapter`: the adapter brings its own LoRA config")
+        init_kwargs = dict(grpo_kwargs.get("model_init_kwargs") or {})
+        grpo_config.model_init_kwargs = None
+        dtype = init_kwargs.pop("dtype", None)
+        if isinstance(dtype, str):
+            dtype = getattr(torch, dtype)
+        base = AutoModelForCausalLM.from_pretrained(
+            cfg["model"], dtype=dtype, quantization_config=quant_config, **init_kwargs
+        )
+        model = PeftModel.from_pretrained(base, cfg["init_adapter"], is_trainable=True)
+        quant_config = None
+        print(f"continuing from adapter {cfg['init_adapter']}")
+    elif "lora" in cfg:
+        peft_config = LoraConfig(task_type="CAUSAL_LM", **cfg["lora"])
+
     trainer = GRPOTrainer(
-        model=cfg["model"],
+        model=model,
         reward_funcs=reward_funcs,
         args=grpo_config,
         train_dataset=train_ds,

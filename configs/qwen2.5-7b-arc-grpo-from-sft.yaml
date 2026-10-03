@@ -1,0 +1,48 @@
+# GRPO on top of the SFT adapter: same task, rewards and batch shape as qwen2.5-7b-arc-h100.yaml, but
+# the policy starts from outputs/qwen2.5-7b-arc-sft/final (init_adapter replaces the lora block; the
+# adapter keeps training and the final adapter is self-contained). Training prompts are augmented
+# like the SFT data. Run configs/qwen2.5-7b-arc-sft.yaml first. Sized for an 80 GB card. Not yet run.
+run_name: qwen2.5-7b-arc-grpo-from-sft
+model: Qwen/Qwen2.5-7B-Instruct
+init_adapter: outputs/qwen2.5-7b-arc-sft/final
+task: arc
+
+data:
+  n_tasks: 50                 # the GRPO holdout (50 smallest tasks x 20) is a subset of the SFT holdout
+  select: smallest
+  samples_per_task: 200
+  n_demos: 3
+  holdout_per_task: 20
+  max_prompt_cells: 2000
+  max_output_cells: 300
+  augment:
+    dihedral: true
+    color_permutation: true
+    keep_background: true
+
+rewards: [arc_exact, arc_partial, arc_format]
+
+grpo:
+  model_init_kwargs: {dtype: bfloat16}
+  num_generations: 8
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8      # 32 completions = 4 prompts per optimizer step
+  generation_batch_size: 32
+  max_completion_length: 384
+  temperature: 1.0
+  beta: 0.0
+  epsilon: 0.2
+  scale_rewards: group
+  learning_rate: 1.0e-5               # half the from-scratch LoRA rate: the adapter is already trained
+  lr_scheduler_type: constant_with_warmup
+  warmup_steps: 10
+  max_grad_norm: 0.5
+  max_steps: 100
+  gradient_checkpointing: true
+  bf16: true
+  logging_steps: 1
+  save_strategy: steps
+  save_steps: 50
+  save_total_limit: 1
+  report_to: none
+  seed: 0
